@@ -10,6 +10,8 @@ import (
 type SRI []Digest
 
 // ParseSRI parses a whitespace-separated Subresource Integrity metadata list.
+// It accepts standard and URL-safe base64 with optional padding and ignores
+// options, which SRI currently leaves undefined.
 func ParseSRI(value string) (SRI, error) {
 	fields := strings.Fields(value)
 	if len(fields) == 0 {
@@ -17,30 +19,51 @@ func ParseSRI(value string) (SRI, error) {
 	}
 
 	digests := make(SRI, 0, len(fields))
-	for _, field := range fields {
-		name, encoded, ok := strings.Cut(field, "-")
+	for index, field := range fields {
+		expression, _, _ := strings.Cut(field, "?")
+		name, encoded, ok := strings.Cut(expression, "-")
 		if !ok {
-			return nil, fmt.Errorf("parse SRI entry %q: missing algorithm prefix", field)
+			return nil, fmt.Errorf("parse SRI entry %d: missing algorithm prefix", index+1)
 		}
 		algorithm, err := parseAlgorithm(name)
 		if err != nil {
-			return nil, fmt.Errorf("parse SRI entry %q: %w", field, err)
+			return nil, fmt.Errorf("parse SRI entry %d: %w", index+1, err)
 		}
-		raw, err := base64.StdEncoding.DecodeString(encoded)
+		raw, err := decodeBase64Digest(algorithm, encoded)
 		if err != nil {
-			return nil, fmt.Errorf("parse SRI entry %q: %w", field, err)
+			return nil, fmt.Errorf("parse SRI entry %d: %w", index+1, err)
 		}
 		digest, err := newDigest(algorithm, raw)
 		if err != nil {
-			return nil, fmt.Errorf("parse SRI entry %q: %w", field, err)
+			return nil, fmt.Errorf("parse SRI entry %d: %w", index+1, err)
 		}
 		digests = append(digests, digest)
 	}
 	return digests, nil
 }
 
-// FormatSRI formats a metadata list with lower-case algorithm names, standard
-// base64, and one space between entries.
+func decodeBase64Digest(algorithm Algorithm, encoded string) ([]byte, error) {
+	want, err := digestSize(algorithm)
+	if err != nil {
+		return nil, err
+	}
+
+	paddedLength := base64.StdEncoding.EncodedLen(want)
+	rawLength := base64.RawStdEncoding.EncodedLen(want)
+	encoding := base64.StdEncoding
+	if len(encoded) == rawLength && rawLength != paddedLength {
+		encoding = base64.RawStdEncoding
+	} else if len(encoded) != paddedLength {
+		return nil, fmt.Errorf("%s digest encoding has %d bytes, incompatible with %d-byte digest", algorithm, len(encoded), want)
+	}
+
+	encoded = strings.ReplaceAll(encoded, "-", "+")
+	encoded = strings.ReplaceAll(encoded, "_", "/")
+	return encoding.DecodeString(encoded)
+}
+
+// FormatSRI formats a metadata list with lower-case algorithm names, padded
+// standard base64, and one space between entries.
 func FormatSRI(sri SRI) string {
 	entries := make([]string, len(sri))
 	for i, digest := range sri {

@@ -39,6 +39,9 @@ func (a Algorithm) String() string {
 }
 
 func parseAlgorithm(value string) (Algorithm, error) {
+	if len(value) > len("sha512") {
+		return 0, fmt.Errorf("unsupported algorithm")
+	}
 	switch strings.ToLower(value) {
 	case "sha256":
 		return SHA256, nil

@@ -3,6 +3,7 @@ package integrity
 import (
 	"bytes"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -12,6 +13,15 @@ func BenchmarkParseSRI(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		_, _ = ParseSRI(benchmarkSRI)
+	}
+}
+
+func BenchmarkParseSRIOversized(b *testing.B) {
+	value := "sha256-" + strings.Repeat("A", 64*1024)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(value)))
+	for b.Loop() {
+		_, _ = ParseSRI(value)
 	}
 }
 

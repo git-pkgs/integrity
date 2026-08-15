@@ -95,6 +95,28 @@ func TestParseSRIMultipleHashesCanonicalFormat(t *testing.T) {
 	}
 }
 
+func TestParseSRIBase64EncodingsAndOptions(t *testing.T) {
+	raw := digestBytes(SHA256, "hello")
+	canonical := sriEntry(SHA256, "hello")
+	tests := map[string]string{
+		"base64url":     "sha256-" + base64.URLEncoding.EncodeToString(raw),
+		"raw base64":    "sha256-" + base64.RawStdEncoding.EncodeToString(raw),
+		"raw base64url": "sha256-" + base64.RawURLEncoding.EncodeToString(raw),
+		"options":       canonical + "?first?second",
+	}
+	for name, value := range tests {
+		t.Run(name, func(t *testing.T) {
+			parsed, err := ParseSRI(value)
+			if err != nil {
+				t.Fatalf("ParseSRI(%q): %v", value, err)
+			}
+			if got := FormatSRI(parsed); got != canonical {
+				t.Errorf("FormatSRI = %q, want %q", got, canonical)
+			}
+		})
+	}
+}
+
 func TestParseSRIRejectsMalformedValues(t *testing.T) {
 	tests := map[string]string{
 		"empty":                 "",
@@ -102,7 +124,6 @@ func TestParseSRIRejectsMalformedValues(t *testing.T) {
 		"missing separator":     "sha256",
 		"unsupported algorithm": "md5-1B2M2Y8AsgTpgAmY7PhCfg==",
 		"malformed base64":      "sha384-not!base64",
-		"URL base64":            "sha256-__________________________________________8=",
 		"short SHA-256":         "sha256-" + base64.StdEncoding.EncodeToString(make([]byte, sha256Size-1)),
 		"long SHA-384":          "sha384-" + base64.StdEncoding.EncodeToString(make([]byte, sha384Size+1)),
 		"short SHA-512":         "sha512-" + base64.StdEncoding.EncodeToString(make([]byte, sha512Size-1)),
@@ -114,6 +135,22 @@ func TestParseSRIRejectsMalformedValues(t *testing.T) {
 				t.Fatalf("ParseSRI(%q) returned nil error", value)
 			}
 		})
+	}
+}
+
+func TestParseSRIRejectsOversizedValuesWithoutEchoingInput(t *testing.T) {
+	values := []string{
+		"sha256-" + strings.Repeat("A", 64*1024),
+		strings.Repeat("A", 64*1024) + "-digest",
+	}
+	for _, value := range values {
+		_, err := ParseSRI(value)
+		if err == nil {
+			t.Fatalf("ParseSRI accepted an oversized value")
+		}
+		if len(err.Error()) > 256 {
+			t.Errorf("ParseSRI returned a %d-byte error for oversized input", len(err.Error()))
+		}
 	}
 }
 
@@ -144,6 +181,7 @@ func TestParseHexRejectsMalformedValues(t *testing.T) {
 		{SHA384, strings.Repeat("00", sha384Size+1)},
 		{SHA512, ""},
 		{Algorithm(99), strings.Repeat("00", sha256Size)},
+		{SHA256, strings.Repeat("00", 64*1024)},
 	}
 	for _, test := range tests {
 		if _, err := ParseHex(test.algorithm, test.value); err == nil {

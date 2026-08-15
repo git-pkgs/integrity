@@ -29,6 +29,14 @@ func newDigest(algorithm Algorithm, raw []byte) (Digest, error) {
 
 // ParseHex parses a hexadecimal digest for algorithm.
 func ParseHex(algorithm Algorithm, value string) (Digest, error) {
+	want, err := digestSize(algorithm)
+	if err != nil {
+		return Digest{}, fmt.Errorf("parse %s hex digest: %w", algorithm, err)
+	}
+	if len(value) != hex.EncodedLen(want) {
+		return Digest{}, fmt.Errorf("parse %s hex digest: encoding has %d bytes, want %d", algorithm, len(value), hex.EncodedLen(want))
+	}
+
 	raw, err := hex.DecodeString(value)
 	if err != nil {
 		return Digest{}, fmt.Errorf("parse %s hex digest: %w", algorithm, err)

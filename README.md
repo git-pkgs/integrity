@@ -23,7 +23,7 @@ fmt.Println(metadata[0].Hex())
 fmt.Println(integrity.FormatSRI(metadata))
 ```
 
-`ParseSRI` accepts surrounding whitespace and metadata lists containing more than one hash. `FormatSRI` emits lower-case algorithm names, standard base64, and one space between entries. `ParseHex` constructs a digest from the hexadecimal values commonly stored by package caches and SBOMs.
+`ParseSRI` accepts surrounding whitespace, metadata lists containing more than one hash, and standard or URL-safe base64 with optional padding. It ignores options because SRI does not define any yet. `FormatSRI` emits lower-case algorithm names, padded standard base64, and one space between entries. `ParseHex` constructs a digest from the hexadecimal values commonly stored by package caches and SBOMs.
 
 All constructors check the digest length for its algorithm. `Digest.Bytes` returns a copy, while `Digest.Hex` and `Digest.SRI` return canonical encodings.
 
@@ -37,16 +37,33 @@ if err != nil {
 	return err
 }
 
+defer response.Body.Close()
+
 reader, err := integrity.NewReader(response.Body, integrity.SHA256, integrity.SHA512)
 if err != nil {
 	return err
 }
-if _, err := io.Copy(destination, reader); err != nil {
+
+temporary, err := os.CreateTemp(filepath.Dir(destinationPath), ".package-*")
+if err != nil {
+	return err
+}
+temporaryPath := temporary.Name()
+defer os.Remove(temporaryPath)
+defer temporary.Close()
+
+if _, err := io.Copy(temporary, reader); err != nil {
 	return err
 }
 
 result := reader.Result()
 if err := result.Verify(expected); err != nil {
+	return err
+}
+if err := temporary.Close(); err != nil {
+	return err
+}
+if err := os.Rename(temporaryPath, destinationPath); err != nil {
 	return err
 }
 fmt.Println(result.Bytes)
@@ -56,7 +73,7 @@ The reader calculates each requested algorithm once and counts every byte return
 
 SRI verification uses the strongest supported algorithm in the metadata list. Any digest using that algorithm can match. A matching weaker digest does not replace a mismatch from a stronger algorithm.
 
-Closing sources, reporting failures, and cache policy remain with the caller. The integrity reader only passes bytes through and records digest state.
+The caller must close the source and keep copied bytes private until verification succeeds. Write cache entries to a temporary file or object, then commit them after `Verify` returns nil. Reporting failures and cache policy remain with the caller.
 
 ## Development
 
@@ -64,6 +81,12 @@ Run the tests and race detector:
 
 ```bash
 go test -race ./...
+```
+
+Run the linters and vulnerability scan:
+
+```bash
+make lint
 ```
 
 Run each fuzz target:

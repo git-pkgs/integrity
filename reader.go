@@ -13,7 +13,8 @@ type hashState struct {
 	hash      hash.Hash
 }
 
-// Reader calculates requested digests as bytes pass through it.
+// Reader calculates requested digests as bytes pass through it. Bytes remain
+// unverified until a completed Result passes Verify.
 type Reader struct {
 	source   io.Reader
 	hashes   []hashState
