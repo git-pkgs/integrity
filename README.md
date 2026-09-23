@@ -104,4 +104,4 @@ go test -run '^$' -bench . -benchmem
 
 ## License
 
-MIT
+[MIT](LICENSE).
