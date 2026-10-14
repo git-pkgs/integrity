@@ -4,6 +4,8 @@ Parse Subresource Integrity metadata and registry checksums, and verify package 
 
 ## Install
 
+Requires Go 1.26 or later.
+
 ```bash
 go get github.com/git-pkgs/integrity
 ```
@@ -100,6 +102,10 @@ if err := reader.Result().VerifyDigest(expected); err != nil {
 MD5 and SHA-1 are compatibility checks for metadata a publisher already supplied. Both are broken for collision resistance, so prefer a stronger checksum whenever the registry offers one, and never choose them for new integrity metadata. They are not SRI algorithms: `ParseSRI` rejects them, `Digest.SRI` returns an empty string for them, `FormatSRI` leaves them out, and `Result.Verify` refuses an SRI list containing them. `Digest.Checksum` gives the canonical `<algorithm>-<hex>` form for any algorithm.
 
 SRI verification ranks algorithms by an explicit strength order (SHA-512, then SHA-384, then SHA-256), not by the order of the `Algorithm` constants.
+
+## Changes since v0.1.1
+
+Added `ParseChecksum`, `Digest.Checksum`, and `Result.VerifyDigest` for algorithm-prefixed hexadecimal checksums. `ParseHex` and `NewReader` now support MD5 and SHA-1 for checking existing publisher metadata; SRI remains limited to SHA-256, SHA-384, and SHA-512. The minimum Go version increased from 1.25.6 to 1.26.
 
 ## Development
 
