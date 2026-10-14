@@ -45,3 +45,26 @@ func FuzzSRIRoundTrip(f *testing.F) {
 		}
 	})
 }
+
+func FuzzParseChecksum(f *testing.F) {
+	f.Add("")
+	f.Add("sha1-")
+	f.Add("md5-" + checksumHex(MD5, "hello"))
+	f.Add("sha1:" + checksumHex(SHA1, "hello"))
+	f.Add("SHA512-" + checksumHex(SHA512, "hello"))
+	f.Add("sha256-" + checksumHex(SHA256, "hello") + " extra")
+
+	f.Fuzz(func(t *testing.T, value string) {
+		digest, err := ParseChecksum(value)
+		if err != nil {
+			return
+		}
+		again, err := ParseChecksum(digest.Checksum())
+		if err != nil {
+			t.Fatalf("ParseChecksum accepted %q but rejected its canonical form: %v", value, err)
+		}
+		if !digest.Equal(again) {
+			t.Fatalf("round trip of %q changed the digest", value)
+		}
+	})
+}

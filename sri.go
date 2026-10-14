@@ -25,7 +25,7 @@ func ParseSRI(value string) (SRI, error) {
 		if !ok {
 			return nil, fmt.Errorf("parse SRI entry %d: missing algorithm prefix", index+1)
 		}
-		algorithm, err := parseAlgorithm(name)
+		algorithm, err := parseSRIAlgorithm(name)
 		if err != nil {
 			return nil, fmt.Errorf("parse SRI entry %d: %w", index+1, err)
 		}
@@ -63,11 +63,14 @@ func decodeBase64Digest(algorithm Algorithm, encoded string) ([]byte, error) {
 }
 
 // FormatSRI formats a metadata list with lower-case algorithm names, padded
-// standard base64, and one space between entries.
+// standard base64, and one space between entries. MD5 and SHA-1 digests have
+// no SRI encoding and are left out.
 func FormatSRI(sri SRI) string {
-	entries := make([]string, len(sri))
-	for i, digest := range sri {
-		entries[i] = digest.SRI()
+	entries := make([]string, 0, len(sri))
+	for _, digest := range sri {
+		if entry := digest.SRI(); entry != "" {
+			entries = append(entries, entry)
+		}
 	}
 	return strings.Join(entries, " ")
 }
@@ -77,15 +80,12 @@ func strongestAlgorithm(sri SRI) (Algorithm, error) {
 		return 0, fmt.Errorf("verify integrity: no expected digests")
 	}
 	strongest := sri[0].Algorithm()
-	if _, err := digestSize(strongest); err != nil {
-		return 0, fmt.Errorf("verify integrity: %w", err)
-	}
-	for _, digest := range sri[1:] {
+	for _, digest := range sri {
 		algorithm := digest.Algorithm()
-		if _, err := digestSize(algorithm); err != nil {
-			return 0, fmt.Errorf("verify integrity: %w", err)
+		if !algorithm.sri() {
+			return 0, fmt.Errorf("verify integrity: %s is not a Subresource Integrity algorithm", algorithm)
 		}
-		if algorithm > strongest {
+		if algorithm.strength() > strongest.strength() {
 			strongest = algorithm
 		}
 	}

@@ -14,3 +14,4 @@ FUZZTIME ?= 30s
 fuzz:
 	go test -fuzz=FuzzParseSRI -fuzztime=$(FUZZTIME) .
 	go test -fuzz=FuzzSRIRoundTrip -fuzztime=$(FUZZTIME) .
+	go test -fuzz=FuzzParseChecksum -fuzztime=$(FUZZTIME) .

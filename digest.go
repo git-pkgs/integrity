@@ -5,11 +5,12 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"strings"
 )
 
 // Digest is an immutable algorithm and digest-byte pair.
 //
-// Use ParseHex or ParseSRI to construct a Digest. Bytes returns a copy of the
+// Use ParseHex, ParseChecksum or ParseSRI to construct a Digest. Bytes returns a copy of the
 // stored bytes.
 type Digest struct {
 	algorithm Algorithm
@@ -27,7 +28,9 @@ func newDigest(algorithm Algorithm, raw []byte) (Digest, error) {
 	return Digest{algorithm: algorithm, bytes: append([]byte(nil), raw...)}, nil
 }
 
-// ParseHex parses a hexadecimal digest for algorithm.
+// ParseHex parses a hexadecimal digest for algorithm. It accepts every
+// supported algorithm, MD5 and SHA-1 included, for callers that already know
+// which algorithm a registry's checksum uses.
 func ParseHex(algorithm Algorithm, value string) (Digest, error) {
 	want, err := digestSize(algorithm)
 	if err != nil {
@@ -48,6 +51,27 @@ func ParseHex(algorithm Algorithm, value string) (Digest, error) {
 	return digest, nil
 }
 
+// ParseChecksum parses a single algorithm-prefixed hexadecimal checksum, such
+// as "sha256-<hex>" or "sha1:<hex>", the form many registries publish instead
+// of SRI. It accepts every supported algorithm, MD5 and SHA-1 included, and
+// surrounding whitespace. Verify the result with Result.VerifyDigest.
+func ParseChecksum(value string) (Digest, error) {
+	value = strings.TrimSpace(value)
+	separator := strings.IndexAny(value, "-:")
+	if separator < 0 {
+		return Digest{}, fmt.Errorf("parse checksum: missing algorithm prefix")
+	}
+	algorithm, err := parseAlgorithm(value[:separator])
+	if err != nil {
+		return Digest{}, fmt.Errorf("parse checksum: %w", err)
+	}
+	digest, err := ParseHex(algorithm, value[separator+1:])
+	if err != nil {
+		return Digest{}, fmt.Errorf("parse checksum: %w", err)
+	}
+	return digest, nil
+}
+
 // Algorithm returns the digest algorithm.
 func (d Digest) Algorithm() Algorithm {
 	return d.algorithm
@@ -63,9 +87,19 @@ func (d Digest) Hex() string {
 	return hex.EncodeToString(d.bytes)
 }
 
-// SRI returns the canonical Subresource Integrity encoding.
+// SRI returns the canonical Subresource Integrity encoding, or "" for an
+// MD5 or SHA-1 digest, which SRI does not allow.
 func (d Digest) SRI() string {
+	if !d.algorithm.sri() {
+		return ""
+	}
 	return d.algorithm.String() + "-" + base64.StdEncoding.EncodeToString(d.bytes)
+}
+
+// Checksum returns the canonical algorithm-prefixed hexadecimal encoding,
+// which ParseChecksum accepts.
+func (d Digest) Checksum() string {
+	return d.algorithm.String() + "-" + d.Hex()
 }
 
 // Equal reports whether two digests use the same algorithm and contain the

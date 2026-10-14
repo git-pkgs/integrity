@@ -1,6 +1,8 @@
 package integrity
 
 import (
+	"crypto/md5"  //nolint:gosec // verification-only compatibility checksum
+	"crypto/sha1" //nolint:gosec // verification-only compatibility checksum
 	"crypto/sha256"
 	"crypto/sha512"
 	"fmt"
@@ -60,6 +62,10 @@ func NewReader(source io.Reader, algorithms ...Algorithm) (*Reader, error) {
 			calculator = sha512.New384()
 		case SHA512:
 			calculator = sha512.New()
+		case MD5:
+			calculator = md5.New() //nolint:gosec // verification-only compatibility checksum
+		case SHA1:
+			calculator = sha1.New() //nolint:gosec // verification-only compatibility checksum
 		default:
 			return nil, fmt.Errorf("new integrity reader: unsupported algorithm %q", algorithm)
 		}
@@ -102,7 +108,8 @@ func (r *Reader) Result() Result {
 
 // Verify applies the W3C SRI matching rule to a completed result. Only the
 // strongest algorithm in expected is considered, and any digest using that
-// algorithm may match.
+// algorithm may match. expected must hold only SRI algorithms; use
+// VerifyDigest for an MD5 or SHA-1 checksum.
 func (r Result) Verify(expected SRI) error {
 	if !r.Complete {
 		return &ErrIncomplete{}
@@ -133,4 +140,27 @@ func (r Result) Verify(expected SRI) error {
 	}
 
 	return fmt.Errorf("integrity mismatch: expected %s, calculated no %s digest", FormatSRI(expectedStrongest), algorithm)
+}
+
+// VerifyDigest checks a completed result against one exact digest, such as a
+// registry checksum from ParseChecksum or ParseHex. It accepts every
+// supported algorithm, MD5 and SHA-1 included, and requires that the reader
+// calculated that algorithm.
+func (r Result) VerifyDigest(expected Digest) error {
+	if !r.Complete {
+		return &ErrIncomplete{}
+	}
+	if _, err := digestSize(expected.Algorithm()); err != nil || len(expected.bytes) == 0 {
+		return fmt.Errorf("verify digest: no expected digest")
+	}
+	for _, calculated := range r.Digests {
+		if calculated.Algorithm() != expected.Algorithm() {
+			continue
+		}
+		if calculated.Equal(expected) {
+			return nil
+		}
+		return fmt.Errorf("integrity mismatch: expected %s, calculated %s", expected.Checksum(), calculated.Checksum())
+	}
+	return fmt.Errorf("integrity mismatch: expected %s, calculated no %s digest", expected.Checksum(), expected.Algorithm())
 }
