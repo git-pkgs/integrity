@@ -1,6 +1,6 @@
 # integrity
 
-Parse Subresource Integrity metadata and verify package streams while they are read. The module supports SHA-256, SHA-384, and SHA-512 using only the Go standard library.
+Parse Subresource Integrity metadata and registry checksums, and verify package streams while they are read. The module supports SHA-256, SHA-384, and SHA-512 using only the Go standard library, and MD5 and SHA-1 for verifying checksums registries already publish.
 
 ## Install
 
@@ -75,6 +75,32 @@ SRI verification uses the strongest supported algorithm in the metadata list. An
 
 The caller must close the source and keep copied bytes private until verification succeeds. Write cache entries to a temporary file or object, then commit them after `Verify` returns nil. Reporting failures and cache policy remain with the caller.
 
+## Verify a registry checksum
+
+Many registries publish a single hexadecimal checksum rather than SRI, sometimes in MD5 or SHA-1: npm's `dist.shasum`, Packagist's `dist.shasum`, Conda's `md5`, or a Vagrant box's `checksum_type` and `checksum`. `ParseChecksum` parses an algorithm-prefixed value such as `sha256-<hex>` or `sha1:<hex>`. `ParseHex` takes the algorithm separately. `Result.VerifyDigest` checks a completed stream against that one exact digest.
+
+```go
+expected, err := integrity.ParseHex(integrity.SHA1, shasum)
+if err != nil {
+	return err
+}
+
+reader, err := integrity.NewReader(response.Body, expected.Algorithm())
+if err != nil {
+	return err
+}
+if _, err := io.Copy(temporary, reader); err != nil {
+	return err
+}
+if err := reader.Result().VerifyDigest(expected); err != nil {
+	return err
+}
+```
+
+MD5 and SHA-1 are compatibility checks for metadata a publisher already supplied. Both are broken for collision resistance, so prefer a stronger checksum whenever the registry offers one, and never choose them for new integrity metadata. They are not SRI algorithms: `ParseSRI` rejects them, `Digest.SRI` returns an empty string for them, `FormatSRI` leaves them out, and `Result.Verify` refuses an SRI list containing them. `Digest.Checksum` gives the canonical `<algorithm>-<hex>` form for any algorithm.
+
+SRI verification ranks algorithms by an explicit strength order (SHA-512, then SHA-384, then SHA-256), not by the order of the `Algorithm` constants.
+
 ## Development
 
 Run the tests and race detector:
@@ -94,6 +120,7 @@ Run each fuzz target:
 ```bash
 go test -fuzz=FuzzParseSRI -fuzztime=30s
 go test -fuzz=FuzzSRIRoundTrip -fuzztime=30s
+go test -fuzz=FuzzParseChecksum -fuzztime=30s
 ```
 
 Run the benchmarks:
